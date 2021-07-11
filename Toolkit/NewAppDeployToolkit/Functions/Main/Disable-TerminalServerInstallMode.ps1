@@ -1,5 +1,4 @@
-#region Function Disable-TerminalServerInstallMode
-Function Disable-TerminalServerInstallMode {
+function Disable-TerminalServerInstallMode {
 <#
 .SYNOPSIS
 	Changes to user install mode for Remote Desktop Session Host/Citrix servers.
@@ -14,33 +13,34 @@ Function Disable-TerminalServerInstallMode {
 	http://psappdeploytoolkit.com
 #>
 	[CmdletBinding()]
-	Param (
-		[Parameter(Mandatory=$false)]
+	param (
 		[ValidateNotNullorEmpty()]
 		[boolean]$ContinueOnError = $true
 	)
 
-	Begin {
+	begin {
 		## Get the name of this function and write header
-		[string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
-		Write-FunctionHeaderOrFooter -CmdletName ${CmdletName} -CmdletBoundParameters $PSBoundParameters -Header
+		$CmdletName = $PSCmdlet.MyInvocation.MyCommand.Name
+		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
 	}
-	Process {
-		Try {
-			Write-Log -Message 'Changing terminal server into user execute mode...' -Source ${CmdletName}
+
+	process {
+		try {
+			Write-Log -Message 'Changing terminal server into user execute mode...' -Source $CmdletName
 			$terminalServerResult = & "$envWinDir\System32\change.exe" User /Execute
 
-			If ($global:LastExitCode -ne 1) { Throw $terminalServerResult }
-		}
-		Catch {
-			Write-Log -Message "Failed to change terminal server into user execute mode. `r`n$(Resolve-Error) " -Severity 3 -Source ${CmdletName}
-			If (-not $ContinueOnError) {
-				Throw "Failed to change terminal server into user execute mode: $($_.Exception.Message)"
+			if ($global:LastExitCode -ne 1) {
+				 throw $terminalServerResult 
+			}
+		} catch {
+			Write-Log -Message "Failed to change terminal server into user execute mode. `r`n$(Resolve-Error) " -Severity 3 -Source $CmdletName
+			if (-not $ContinueOnError) {
+				throw "Failed to change terminal server into user execute mode: $($_.Exception.Message)"
 			}
 		}
 	}
-	End {
-		Write-FunctionHeaderOrFooter -CmdletName ${CmdletName} -Footer
+
+	end {
+		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -Footer
 	}
 }
-#endregion
