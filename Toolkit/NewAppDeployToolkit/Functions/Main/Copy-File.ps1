@@ -30,16 +30,21 @@ function Copy-File {
 		[Parameter(Mandatory=$true)]
 		[ValidateNotNullorEmpty()]
 		[string[]]$Path,
+		
 		[Parameter(Mandatory=$true)]
 		[ValidateNotNullorEmpty()]
 		[string]$Destination,
+
 		[Parameter()] #TODO: can this go if empty?
 		[switch]$Recurse = $false,
+
 		[Parameter()] #TODO: can this go if empty?
 		[switch]$Flatten,
+
 		[Parameter()] #TODO: can this go if empty?
 		[ValidateNotNullOrEmpty()]
 		[boolean]$ContinueOnError = $true,
+
 		[ValidateNotNullOrEmpty()]
 		[boolean]$ContinueFileCopyOnError = $false
 	)
