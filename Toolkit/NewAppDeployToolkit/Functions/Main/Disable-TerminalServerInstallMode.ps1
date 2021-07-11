@@ -14,7 +14,6 @@ function Disable-TerminalServerInstallMode {
 #>
 	[CmdletBinding()]
 	param (
-		[Parameter()] #TODO: can this go if empty?
 		[ValidateNotNullorEmpty()]
 		[boolean]$ContinueOnError = $true
 	)
