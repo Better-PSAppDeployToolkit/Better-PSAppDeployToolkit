@@ -31,7 +31,7 @@ function Block-AppExecution {
 	begin {
 		## Get the name of this function and write header
 		$CmdletName = $PSCmdlet.MyInvocation.MyCommand.Name
-		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
+		Write-FunctionInfo -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
 
 		## Remove illegal characters from the scheduled task arguments string
 		$InvalidScheduledTaskChars = "$!'`"();\``*?{}[]<>|&%#~@ ".ToCharArray()
@@ -210,6 +210,6 @@ function Block-AppExecution {
 	}
 	
 	end {
-		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -Footer
+		Write-FunctionInfo -CmdletName $CmdletName -Footer
 	}
 }

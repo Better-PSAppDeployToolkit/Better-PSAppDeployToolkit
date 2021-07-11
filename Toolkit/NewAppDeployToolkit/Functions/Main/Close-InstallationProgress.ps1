@@ -24,7 +24,7 @@ function Close-InstallationProgress {
 	begin {
 		## Get the name of this function and write header
 		$CmdletName = $PSCmdlet.MyInvocation.MyCommand.Name
-		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
+		Write-FunctionInfo -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
 	}
 
 	process {
@@ -127,8 +127,7 @@ function Close-InstallationProgress {
 			$script:ProgressSyncHash.Clear()
 		}
 	}
-
 	end {
-		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -Footer
+		Write-FunctionInfo -CmdletName $CmdletName -Footer
 	}
 }
