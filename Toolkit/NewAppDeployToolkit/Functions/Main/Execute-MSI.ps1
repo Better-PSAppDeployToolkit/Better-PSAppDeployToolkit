@@ -130,7 +130,7 @@ function Execute-MSI {
 	begin {
 		## Get the name of this function and write header
 		$CmdletName = $PSCmdlet.MyInvocation.MyCommand.Name
-		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
+		Write-FunctionInfo -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
 	}
 
 	process {
@@ -404,12 +404,12 @@ function Execute-MSI {
 			Write-Log -Message "The MSI is not installed on this system. Skipping action [$Action]..." -Source $CmdletName
 		}
 	}
-
+  
 	end {
 		if ($PassThru) { 
 			Write-Output -InputObject $ExecuteResults 
 		}
 		
-		Write-FunctionHeaderOrFooter -CmdletName $CmdletName -Footer
+		Write-FunctionInfo -CmdletName $CmdletName -Footer
 	}
 }

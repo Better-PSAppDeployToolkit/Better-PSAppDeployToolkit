@@ -1,5 +1,4 @@
-#region Function Copy-File
-Function Copy-File {
+function Copy-File {
 <#
 .SYNOPSIS
 	Copy a file or group of files to a destination path.
@@ -27,102 +26,105 @@ Function Copy-File {
 	http://psappdeploytoolkit.com
 #>
 	[CmdletBinding()]
-	Param (
+	param (
 		[Parameter(Mandatory=$true)]
 		[ValidateNotNullorEmpty()]
 		[string[]]$Path,
+		
 		[Parameter(Mandatory=$true)]
 		[ValidateNotNullorEmpty()]
 		[string]$Destination,
-		[Parameter(Mandatory=$false)]
+
+		[Parameter()] #TODO: can this go if empty?
 		[switch]$Recurse = $false,
-		[Parameter(Mandatory=$false)]
+
+		[Parameter()] #TODO: can this go if empty?
 		[switch]$Flatten,
-		[Parameter(Mandatory=$false)]
+
+		[Parameter()] #TODO: can this go if empty?
 		[ValidateNotNullOrEmpty()]
 		[boolean]$ContinueOnError = $true,
+
 		[ValidateNotNullOrEmpty()]
 		[boolean]$ContinueFileCopyOnError = $false
 	)
 
-	Begin {
+	begin {
 		## Get the name of this function and write header
-		[string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
-		Write-FunctionHeaderOrFooter -CmdletName ${CmdletName} -CmdletBoundParameters $PSBoundParameters -Header
+		$CmdletName = $PSCmdlet.MyInvocation.MyCommand.Name
+		Write-FunctionInfo -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
 	}
-	Process {
-		Try {
-			If ((-not ([IO.Path]::HasExtension($Destination))) -and (-not (Test-Path -LiteralPath $Destination -PathType 'Container'))) {
-				Write-Log -Message "Destination folder does not exist, creating destination folder [$destination]." -Source ${CmdletName}
-				$null = New-Item -Path $Destination -Type 'Directory' -Force -ErrorAction 'Stop'
+
+	process {
+		try {
+			if (-not (Test-Path -LiteralPath $Destination -PathType 'Container')) {
+				Write-Log -Message "Destination folder does not exist, creating destination folder [$Destination]." -Source $CmdletName
+				New-Item -Path $Destination -Type 'Directory' -Force -ErrorAction 'Stop'
 			}
 
 			if ($Flatten) {
-				If ($Recurse) {
-					Write-Log -Message "Copying file(s) recursively in path [$path] to destination [$destination] root folder, flattened." -Source ${CmdletName}
-					If (-not $ContinueFileCopyOnError) {
-						$null = Get-ChildItem -Path $path -Recurse | ForEach-Object {
-							if(-not($_.PSIsContainer)) {
-								Copy-Item -Path ($_.FullName) -Destination $destination -Force -ErrorAction 'Stop'
-							}
-						}
-					}
-					Else {
-						$null = Get-ChildItem -Path $path -Recurse | ForEach-Object {
-							if(-not($_.PSIsContainer)) {
-								Copy-Item -Path ($_.FullName) -Destination $destination -Force -ErrorAction 'SilentlyContinue' -ErrorVariable FileCopyError
-							}
-						}
-					}
+				Write-Log -Message "Copying file(s) recursively=[$Recurse] in path [$Path] to destination [$Destination] root folder, flattened." -Source $CmdletName
+				
+				if ($Recurse) {
+					$ChildPaths = Get-ChildItem -Path $Path -Recurse | Select FullName
+				} else {
+					$ChildPaths = ($Path)
 				}
-				Else {
-					Write-Log -Message "Copying file in path [$path] to destination [$destination]." -Source ${CmdletName}
-					If (-not $ContinueFileCopyOnError) {
-						$null = Copy-Item -Path $path -Destination $destination -Force -ErrorAction 'Stop'
+
+				foreach ($ChildPath in $ChildPaths) {
+					if ($ChildPath.PSIsContainer) {
+						continue
 					}
-					Else {
-						$null = Copy-Item -Path $path -Destination $destination -Force -ErrorAction 'SilentlyContinue' -ErrorVariable FileCopyError
+					
+					$CopyItemSplat = @{
+						Path        = $ChildPath
+						Destination = $Destination
+						Force       = $true
 					}
+
+					if ($ContinueFileCopyOnError) {
+						$CopyItemSplat["ErrorAction"] = "SilentlyContinue"
+					}else{
+						$CopyItemSplat["ErrorAction"] = "Stop"
+					}
+
+					Copy-Item @CopyItemSplat -ErrorVariable FileCopyError
 				}
-			}
-			Else {
-				$null = $FileCopyError
-				If ($Recurse) {
-					Write-Log -Message "Copying file(s) recursively in path [$path] to destination [$destination]." -Source ${CmdletName}
-					If (-not $ContinueFileCopyOnError) {
-						$null = Copy-Item -Path $Path -Destination $Destination -Force -Recurse -ErrorAction 'Stop'
-					}
-					Else {
-						$null = Copy-Item -Path $Path -Destination $Destination -Force -Recurse -ErrorAction 'SilentlyContinue' -ErrorVariable FileCopyError
-					}
+			} else {
+				$null = $FileCopyError #TODO: idk what this does so im keeping it
+				Write-Log -Message "Copying file(s) recursively in path [$Path] to destination [$Destination]." -Source $CmdletName
+					
+				$CopyItemSplat = @{
+					Path = $Path
+					Destination = $Destination
+					Force = $true
+					Recurse = $Recurse
 				}
-				Else {
-					Write-Log -Message "Copying file in path [$path] to destination [$destination]." -Source ${CmdletName}
-					If (-not $ContinueFileCopyOnError) {
-						$null = Copy-Item -Path $Path -Destination $Destination -Force -ErrorAction 'Stop'
-					}
-					Else {
-						$null = Copy-Item -Path $Path -Destination $Destination -Force -ErrorAction 'SilentlyContinue' -ErrorVariable FileCopyError
-					}
+
+				if ($ContinueFileCopyOnError) {
+					$CopyItemSplat["ErrorAction"] = "SilentlyContinue"
+				}else{
+					$CopyItemSplat["ErrorAction"] = "Stop"
 				}
+
+				Copy-Item @CopyItemSplat -ErrorVariable FileCopyError
 			}
 
-			If ($fileCopyError) {
-				Write-Log -Message "The following warnings were detected while copying file(s) in path [$path] to destination [$destination]. `r`n$FileCopyError" -Severity 2 -Source ${CmdletName}
+			if ((-not $ContinueFileCopyOnError) -and $FileCopyError) {
+				Write-Log -Message "The following warnings were detected while copying file(s) in path [$Path] to destination [$Destination]. `r`n$FileCopyError" -Severity 2 -Source $CmdletName
+			} else {
+				Write-Log -Message "File copy completed successfully." -Source $CmdletName
 			}
-			Else {
-				Write-Log -Message "File copy completed successfully." -Source ${CmdletName}
-			}
-		}
-		Catch {
-			Write-Log -Message "Failed to copy file(s) in path [$path] to destination [$destination]. `r`n$(Resolve-Error)" -Severity 3 -Source ${CmdletName}
-			If (-not $ContinueOnError) {
-				Throw "Failed to copy file(s) in path [$path] to destination [$destination]: $($_.Exception.Message)"
+		} catch {
+			Write-Log -Message "Failed to copy file(s) in path [$Path] to destination [$Destination]. `r`n$(Resolve-Error)" -Severity 3 -Source $CmdletName
+			
+			if (-not $ContinueOnError) {
+				throw "Failed to copy file(s) in path [$Path] to destination [$Destination]: $($_.Exception.Message)"
 			}
 		}
 	}
-	End {
-		Write-FunctionHeaderOrFooter -CmdletName ${CmdletName} -Footer
+
+	end {
+		Write-FunctionInfo -CmdletName $CmdletName -Footer
 	}
 }
-#endregion
