@@ -1,5 +1,9 @@
 # ![PowerShell App Deployment Toolkit Logo](AppDeployToolkitLogo.png) PowerShell App Deployment Toolkit
 
+### This is a modified version of the PSAppDeployToolkit.
+
+This is an attempt to modularise the existing PSAppDeployToolkit scripts and make them more maintainable, extensable and readable. The main goal of this fork is to ultimatley make using PSAppDeployToolkit a more pleasant and straight-forward experience.
+
 ### What is the PowerShell App Deployment Toolkit?
 
 The PowerShell App Deployment Toolkit provides a set of functions to perform common application deployment tasks and to interact with the user during a deployment. It simplifies the complex scripting challenges of deploying applications in the enterprise, provides a consistent deployment experience and improves installation success rates.
