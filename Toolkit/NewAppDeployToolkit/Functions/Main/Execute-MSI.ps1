@@ -1,5 +1,4 @@
-#region Function Execute-MSI
-Function Execute-MSI {
+function Execute-MSI {
 <#
 .SYNOPSIS
 	Executes msiexec.exe to perform the following actions for MSI & MSP files and MSI product codes: install, uninstall, patch, repair, active setup.
@@ -128,225 +127,289 @@ Function Execute-MSI {
 		[boolean]$ContinueOnError = $false
 	)
 
-	Begin {
+	begin {
 		## Get the name of this function and write header
-		[string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
-		Write-FunctionInfo -CmdletName ${CmdletName} -CmdletBoundParameters $PSBoundParameters -Header
+		$CmdletName = $PSCmdlet.MyInvocation.MyCommand.Name
+		Write-FunctionInfo -CmdletName $CmdletName -CmdletBoundParameters $PSBoundParameters -Header
 	}
-	Process {
-		## Initialize variable indicating whether $Path variable is a Product Code or not
-		[boolean]$PathIsProductCode = $false
 
+	process {
 		## If the path matches a product code
-		If ($Path -match $MSIProductCodeRegExPattern) {
+		if ($Path -match $MSIProductCodeRegExPattern) {
 			#  Set variable indicating that $Path variable is a Product Code
-			[boolean]$PathIsProductCode = $true
+			$PathIsProductCode = $true
 
 			#  Resolve the product code to a publisher, application name, and version
 			Write-Log -Message 'Resolving product code to a publisher, application name, and version.' -Source ${CmdletName}
 
-			If ($IncludeUpdatesAndHotfixes) {
-				[psobject]$productCodeNameVersion = Get-InstalledApplication -ProductCode $path -IncludeUpdatesAndHotfixes | Select-Object -Property 'Publisher', 'DisplayName', 'DisplayVersion' -First 1 -ErrorAction 'SilentlyContinue'
+			$GetInstalledApplicationSplat = @{
+				ProductCode               = $path
+				IncludeUpdatesAndHotfixes = $IncludeUpdatesAndHotfixes
 			}
-			Else {
-				[psobject]$productCodeNameVersion = Get-InstalledApplication -ProductCode $path | Select-Object -Property 'Publisher', 'DisplayName', 'DisplayVersion' -First 1 -ErrorAction 'SilentlyContinue'
-			}
+
+			$productCodeNameVersion = Get-InstalledApplication @GetInstalledApplicationSplat | Select-Object -Property 'Publisher', 'DisplayName', 'DisplayVersion' -First 1 -ErrorAction 'SilentlyContinue'
 
 			#  Build the log file name
-			If (-not $logName) {
+			If (-not $LogName) {
+				$LogName = $Path #  set it to the path by default
 				If ($productCodeNameVersion) {
-					If ($productCodeNameVersion.Publisher) {
-						$logName = (Remove-InvalidFileNameChars -Name ($productCodeNameVersion.Publisher + '_' + $productCodeNameVersion.DisplayName + '_' + $productCodeNameVersion.DisplayVersion)) -replace ' ',''
-					}
-					Else {
-						$logName = (Remove-InvalidFileNameChars -Name ($productCodeNameVersion.DisplayName + '_' + $productCodeNameVersion.DisplayVersion)) -replace ' ',''
-					}
-				}
-				Else {
-					#  Out of other options, make the Product Code the name of the log file
-					$logName = $Path
+					$LogNameParts = (
+						$productCodeNameVersion.Publisher,
+						$productCodeNameVersion.DisplayName, 
+						$productCodeNameVersion.DisplayVersion
+					)
+
+					$LogName = (Remove-InvalidFileNameChars -Name ($LogNameParts | Join-String -Separator "_")) -Replace ' ',''
 				}
 			}
-		}
-		Else {
+		} else {
 			#  Get the log file name without file extension
-			If (-not $logName) { $logName = ([IO.FileInfo]$path).BaseName } ElseIf ('.log','.txt' -contains [IO.Path]::GetExtension($logName)) { $logName = [IO.Path]::GetFileNameWithoutExtension($logName) }
+			if (-not $LogName) { 
+				$LogName = ([IO.FileInfo]$Path).BaseName 
+			} elseif (('.log','.txt') -Contains [IO.Path]::GetExtension($LogName)) { 
+				$LogName = [IO.Path]::GetFileNameWithoutExtension($LogName) 
+			}
 		}
 
-		If ($configToolkitCompressLogs) {
-			## Build the log file path
-			[string]$logPath = Join-Path -Path $logTempFolder -ChildPath $logName
-		}
-		Else {
+		if ($ConfigToolkitCompressLogs) {
+			$LogPathDir = $LogTempFolder
+		} else {
 			## Create the Log directory if it doesn't already exist
-			If (-not (Test-Path -LiteralPath $configMSILogDir -PathType 'Container' -ErrorAction 'SilentlyContinue')) {
-				$null = New-Item -Path $configMSILogDir -ItemType 'Directory' -ErrorAction 'SilentlyContinue'
+			if (-not (Test-Path -LiteralPath $ConfigMSILogDir -PathType 'Container' -ErrorAction 'SilentlyContinue')) {
+				New-Item -Path $ConfigMSILogDir -ItemType 'Directory' -ErrorAction 'SilentlyContinue'
 			}
-			## Build the log file path
-			[string]$logPath = Join-Path -Path $configMSILogDir -ChildPath $logName
+
+			$LogPathDir = $ConfigMSILogDir
 		}
+		## Build the log file path
+		$LogPath = Join-Path -Path $LogPathDir -ChildPath $LogName
 
 		## Set the installation Parameters
-		If ($deployModeSilent) {
+		if ($deployModeSilent) {
 			$msiInstallDefaultParams = $configMSISilentParams
 			$msiUninstallDefaultParams = $configMSISilentParams
-		}
-		Else {
+		} else {
 			$msiInstallDefaultParams = $configMSIInstallParams
 			$msiUninstallDefaultParams = $configMSIUninstallParams
 		}
 
 		## Build the MSI Parameters
-		Switch ($action) {
-			'Install' { $option = '/i'; [string]$msiLogFile = "$logPath" + '_Install'; $msiDefaultParams = $msiInstallDefaultParams }
-			'Uninstall' { $option = '/x'; [string]$msiLogFile = "$logPath" + '_Uninstall'; $msiDefaultParams = $msiUninstallDefaultParams }
-			'Patch' { $option = '/update'; [string]$msiLogFile = "$logPath" + '_Patch'; $msiDefaultParams = $msiInstallDefaultParams }
-			'Repair' { $option = '/f'; If ($RepairFromSource) {	$option += "v" } [string]$msiLogFile = "$logPath" + '_Repair'; $msiDefaultParams = $msiInstallDefaultParams }
-			'ActiveSetup' { $option = '/fups'; [string]$msiLogFile = "$logPath" + '_ActiveSetup' }
+		switch ($Action) {
+			'Install' { 
+				$Option = '/i'; 
+				$MsiLogFile = "$LogPath" + '_Install'; 
+				$MsiDefaultParams = $MsiInstallDefaultParams 
+			}
+			'Uninstall' { 
+				$Option = '/x'; 
+				$MsiLogFile = "$LogPath" + '_Uninstall'; 
+				$MsiDefaultParams = $MsiUninstallDefaultParams 
+			}
+			'Patch' { 
+				$Option = '/update'; 
+				$MsiLogFile = "$LogPath" + '_Patch'; 
+				$MsiDefaultParams = $MsiInstallDefaultParams 
+			}
+			'Repair' { 
+				$Option = '/f'; 
+				if ($RepairFromSource) {
+					$Option += "v" 
+				} 
+				$MsiLogFile = "$LogPath" + '_Repair';
+				$MsiDefaultParams = $MsiInstallDefaultParams 
+			}
+			'ActiveSetup' { 
+				$Option = '/fups'; 
+				$MsiLogFile = "$LogPath" + '_ActiveSetup' 
+			}
 		}
 
 		## Append ".log" to the MSI logfile path and enclose in quotes
-		If ([IO.Path]::GetExtension($msiLogFile) -ne '.log') {
-			[string]$msiLogFile = $msiLogFile + '.log'
-			[string]$msiLogFile = "`"$msiLogFile`""
+		if ([IO.Path]::GetExtension($MsiLogFile) -ne '.log') {
+			$MsiLogFile = "`"$MsiLogFile.log`""
 		}
 
 		## If the MSI is in the Files directory, set the full path to the MSI
-		If (Test-Path -LiteralPath (Join-Path -Path $dirFiles -ChildPath $path -ErrorAction 'SilentlyContinue') -PathType 'Leaf' -ErrorAction 'SilentlyContinue') {
-			[string]$msiFile = Join-Path -Path $dirFiles -ChildPath $path
-		}
-		ElseIf (Test-Path -LiteralPath $Path -ErrorAction 'SilentlyContinue') {
-			[string]$msiFile = (Get-Item -LiteralPath $Path).FullName
-		}
-		ElseIf ($PathIsProductCode) {
-			[string]$msiFile = $Path
-		}
-		Else {
-			Write-Log -Message "Failed to find MSI file [$path]." -Severity 3 -Source ${CmdletName}
-			If (-not $ContinueOnError) {
-				Throw "Failed to find MSI file [$path]."
+		if (Test-Path -LiteralPath (Join-Path -Path $DirFiles -ChildPath $Path -ErrorAction 'SilentlyContinue') -PathType 'Leaf' -ErrorAction 'SilentlyContinue') {
+			$MsiFile = Join-Path -Path $DirFiles -ChildPath $Path
+		} elseif (Test-Path -LiteralPath $Path -ErrorAction 'SilentlyContinue') {
+			$MsiFile = (Get-Item -LiteralPath $Path).FullName
+		} elseif ($PathIsProductCode) {
+			$MsiFile = $Path
+		} else {
+			Write-Log -Message "Failed to find MSI file [$Path]." -Severity 3 -Source $CmdletName
+			if (-not $ContinueOnError) {
+				throw "Failed to find MSI file [$Path]."
 			}
-			Continue
+			continue
 		}
 
 		## Set the working directory of the MSI
-		If ((-not $PathIsProductCode) -and (-not $workingDirectory)) { [string]$workingDirectory = Split-Path -Path $msiFile -Parent }
+		if ((-not $PathIsProductCode) -and (-not $WorkingDirectory)) {
+			$WorkingDirectory = Split-Path -Path $MsiFile -Parent 
+		}
+
+		#TODO: the two ifs are literally the same code => funciton or smth?
 
 		## Enumerate all transforms specified, qualify the full path if possible and enclose in quotes
-		If ($transform) {
-			[string[]]$transforms = $transform -replace "`"","" -split ';'
-			for ($i = 0; $i -lt $transforms.Length; $i++) {
-				[string]$FullPath = $null
-				[string]$FullPath = Join-Path -Path (Split-Path -Path $msiFile -Parent) -ChildPath $transforms[$i].Replace('.\','')
+		if ($Transform) {
+			$Transforms = $Transform -replace "`"","" -split ';'
+			for ($i = 0; $i -lt $Transforms.Length; $i++) {
+				$FullPath = Join-Path -Path (Split-Path -Path $MsiFile -Parent) -ChildPath $Transforms[$i].Replace('.\','')
 				If ($FullPath -and (Test-Path -LiteralPath $FullPath -PathType 'Leaf')) {
-					$transforms[$i] = $FullPath
+					$Transforms[$i] = $FullPath
 				}
 			}
-			[string]$mstFile = "`"$($transforms -join ';')`""
+			$MstFile = "`"$($Transforms -join ';')`""
 		}
 
 		## Enumerate all patches specified, qualify the full path if possible and enclose in quotes
-		If ($patch) {
-			[string[]]$patches = $patch -replace "`"","" -split ';'
-			for ($i = 0; $i -lt $patches.Length; $i++) {
-				[string]$FullPath = $null
-				[string]$FullPath = Join-Path -Path (Split-Path -Path $msiFile -Parent) -ChildPath $patches[$i].Replace('.\','')
+		if ($Patch) {
+			$Patches = $Patch -replace "`"","" -split ';'
+			for ($i = 0; $i -lt $Patches.Length; $i++) {
+				$FullPath = Join-Path -Path (Split-Path -Path $MsiFile -Parent) -ChildPath $Patches[$i].Replace('.\','')
 				If ($FullPath -and (Test-Path -LiteralPath $FullPath -PathType 'Leaf')) {
-					$patches[$i] = $FullPath
+					$Patches[$i] = $FullPath
 				}
 			}
-			[string]$mspFile = "`"$($patches -join ';')`""
+			$MspFile = "`"$($Patches -join ';')`""
 		}
 
 		## Get the ProductCode of the MSI
-		If ($PathIsProductCode) {
-			[string]$MSIProductCode = $path
-		}
-		ElseIf ([IO.Path]::GetExtension($msiFile) -eq '.msi') {
-			Try {
-				[hashtable]$GetMsiTablePropertySplat = @{ Path = $msiFile; Table = 'Property'; ContinueOnError = $false }
-				If ($transforms) { $GetMsiTablePropertySplat.Add( 'TransformPath', $transforms ) }
-				[string]$MSIProductCode = Get-MsiTableProperty @GetMsiTablePropertySplat | Select-Object -ExpandProperty 'ProductCode' -ErrorAction 'Stop'
+		if ($PathIsProductCode) {
+			$MSIProductCode = $Path
+		} elseif ([IO.Path]::GetExtension($MsiFile) -eq '.msi') {
+			try {
+				$GetMsiTablePropertySplat = @{ 
+					Path = $MsiFile
+					Table = 'Property'
+					ContinueOnError = $false 
+				}
+
+				if ($Transforms) { 
+					$GetMsiTablePropertySplat.Add( 'TransformPath', $Transforms ) 
+				}
+
+				$MSIProductCode = Get-MsiTableProperty @GetMsiTablePropertySplat | Select-Object -ExpandProperty 'ProductCode' -ErrorAction 'Stop'
 			}
-			Catch {
-				Write-Log -Message "Failed to get the ProductCode from the MSI file. Continue with requested action [$Action]..." -Source ${CmdletName}
+			catch {
+				Write-Log -Message "Failed to get the ProductCode from the MSI file. Continue with requested action [$Action]..." -Source $CmdletName
 			}
 		}
 
 		## Enclose the MSI file in quotes to avoid issues with spaces when running msiexec
-		[string]$msiFile = "`"$msiFile`""
+		$MsiFile = "`"$MsiFile`""
 
 		## Start building the MsiExec command line starting with the base action and file
-		[string]$argsMSI = "$option $msiFile"
+		$ArgsMSI = "$Option $MsiFile"
 		#  Add MST
-		If ($transform) { $argsMSI = "$argsMSI TRANSFORMS=$mstFile TRANSFORMSSECURE=1" }
+		if ($Transform) {
+			$ArgsMSI = "$ArgsMSI TRANSFORMS=$MstFile TRANSFORMSSECURE=1" 
+		}
+
 		#  Add MSP
-		If ($patch) { $argsMSI = "$argsMSI PATCH=$mspFile" }
+		if ($Patch) { 
+			$ArgsMSI = "$ArgsMSI PATCH=$mspFile" 
+		}
+
 		#  Replace default parameters if specified.
-		If ($Parameters) { $argsMSI = "$argsMSI $Parameters" } Else { $argsMSI = "$argsMSI $msiDefaultParams" }
+		if ($Parameters) { 
+			$ArgsMSI = "$ArgsMSI $Parameters" 
+		} else { 
+			$ArgsMSI = "$ArgsMSI $msiDefaultParams" 
+		}
+		
 		#  Add reinstallmode and reinstall variable for Patch
-		If ($action -eq 'Patch') {$argsMSI += " REINSTALLMODE=ecmus REINSTALL=ALL"}
+		if ($Action -eq 'Patch') {
+			$ArgsMSI += " REINSTALLMODE=ecmus REINSTALL=ALL"
+		}
+		
 		#  Append parameters to default parameters if specified.
-		If ($AddParameters) { $argsMSI = "$argsMSI $AddParameters" }
+		if ($AddParameters) {
+			$argsMSI = "$argsMSI $AddParameters" 
+		}
+		
 		#  Add custom Logging Options if specified, otherwise, add default Logging Options from Config file
-		If ($LoggingOptions) { $argsMSI = "$argsMSI $LoggingOptions $msiLogFile" } Else { $argsMSI = "$argsMSI $configMSILoggingOptions $msiLogFile" }
+		if ($LoggingOptions) { 
+			$argsMSI = "$argsMSI $LoggingOptions $msiLogFile" 
+		} else { 
+			$argsMSI = "$argsMSI $configMSILoggingOptions $msiLogFile" 
+		}
 
 		## Check if the MSI is already installed. If no valid ProductCode to check, then continue with requested MSI action.
-		If ($MSIProductCode) {
-			If ($SkipMSIAlreadyInstalledCheck) {
-				[boolean]$IsMsiInstalled = $false
-			}
-			Else {
-				If ($IncludeUpdatesAndHotfixes) {
-					[psobject]$MsiInstalled = Get-InstalledApplication -ProductCode $MSIProductCode -IncludeUpdatesAndHotfixes
+		if ($MSIProductCode) {
+			$IsMsiInstalled = $false
+			if (-not $SkipMSIAlreadyInstalledCheck) {
+				$GetInstalledApplicationSplat = @{
+					ProductCode = $MSIProductCode
 				}
-				Else {
-					[psobject]$MsiInstalled = Get-InstalledApplication -ProductCode $MSIProductCode
+
+				if ($IncludeUpdatesAndHotfixes) {
+					GetInstalledApplicationSplat.Add("IncludeUpdatesAndHotfixes", $true)
 				}
-				If ($MsiInstalled) { [boolean]$IsMsiInstalled = $true }
+
+				$MsiInstalled = Get-InstalledApplication @GetInstalledApplicationSplat
+
+				if ($MsiInstalled) { 
+					$IsMsiInstalled = $true 
+				}
 			}
-		}
-		Else {
-			If ($Action -eq 'Install') { [boolean]$IsMsiInstalled = $false } Else { [boolean]$IsMsiInstalled = $true }
+		} else {
+			$IsMsiInstalled = $Action -neq 'Install'
 		}
 
-		If (($IsMsiInstalled) -and ($Action -eq 'Install')) {
+		if (($IsMsiInstalled) -and ($Action -eq 'Install')) {
 			Write-Log -Message "The MSI is already installed on this system. Skipping action [$Action]..." -Source ${CmdletName}
-		}
-		ElseIf (((-not $IsMsiInstalled) -and ($Action -eq 'Install')) -or ($IsMsiInstalled)) {
+		} elseif (((-not $IsMsiInstalled) -and ($Action -eq 'Install')) -or ($IsMsiInstalled)) {
 			Write-Log -Message "Executing MSI action [$Action]..." -Source ${CmdletName}
+			
 			#  Build the hashtable with the options that will be passed to Execute-Process using splatting
-			[hashtable]$ExecuteProcessSplat =  @{
-				Path = $exeMsiexec
-				Parameters = $argsMSI
-				WindowStyle = 'Normal'
+			$ExecuteProcessSplat =  @{
+				Path                 = $exeMsiexec
+				Parameters           = $argsMSI
+				WindowStyle          = 'Normal'
 				ExitOnProcessFailure = $ExitOnProcessFailure
-				ContinueOnError = $ContinueOnError
+				ContinueOnError      = $ContinueOnError
 			}
-			If ($WorkingDirectory) { $ExecuteProcessSplat.Add( 'WorkingDirectory', $WorkingDirectory) }
-			If ($SecureParameters) { $ExecuteProcessSplat.Add( 'SecureParameters', $SecureParameters) }
-			If ($PassThru) { $ExecuteProcessSplat.Add( 'PassThru', $PassThru) }
-			If ($IgnoreExitCodes) {  $ExecuteProcessSplat.Add( 'IgnoreExitCodes', $IgnoreExitCodes) }
-			If ($PriorityClass) {  $ExecuteProcessSplat.Add( 'PriorityClass', $PriorityClass) }
-			If ($NoWait) { $ExecuteProcessSplat.Add( 'NoWait', $NoWait) }
 
-			#  Call the Execute-Process function
-			If ($PassThru) {
-				[psobject]$ExecuteResults = Execute-Process @ExecuteProcessSplat
+			if ($WorkingDirectory) { 
+				$ExecuteProcessSplat.Add('WorkingDirectory', $WorkingDirectory) 
 			}
-			Else {
-				Execute-Process @ExecuteProcessSplat
+
+			if ($SecureParameters) {
+				$ExecuteProcessSplat.Add('SecureParameters', $SecureParameters) 
 			}
+
+			if ($PassThru) { 
+				$ExecuteProcessSplat.Add('PassThru', $PassThru) 
+			}
+
+			if ($IgnoreExitCodes) {  
+				$ExecuteProcessSplat.Add('IgnoreExitCodes', $IgnoreExitCodes) 
+			}
+
+			if ($PriorityClass) {  
+				$ExecuteProcessSplat.Add('PriorityClass', $PriorityClass) 
+			}
+
+			if ($NoWait) { 
+				$ExecuteProcessSplat.Add('NoWait', $NoWait) 
+			}
+
+			$ExecuteResults = Execute-Process @ExecuteProcessSplat
+
 			#  Refresh environment variables for Windows Explorer process as Windows does not consistently update environment variables created by MSIs
 			Update-Desktop
-		}
-		Else {
-			Write-Log -Message "The MSI is not installed on this system. Skipping action [$Action]..." -Source ${CmdletName}
+		} else {
+			Write-Log -Message "The MSI is not installed on this system. Skipping action [$Action]..." -Source $CmdletName
 		}
 	}
-	End {
-		If ($PassThru) { Write-Output -InputObject $ExecuteResults }
-		Write-FunctionInfo -CmdletName ${CmdletName} -Footer
+  
+	end {
+		if ($PassThru) { 
+			Write-Output -InputObject $ExecuteResults 
+		}
+		
+		Write-FunctionInfo -CmdletName $CmdletName -Footer
 	}
 }
-#endregion
