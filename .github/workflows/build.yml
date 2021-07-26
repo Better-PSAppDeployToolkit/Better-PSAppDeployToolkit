@@ -2,6 +2,10 @@
 
 name: CI
 
+defaults:
+  run:
+    shell: powershell
+
 # Controls when the workflow will run
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
@@ -46,7 +50,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Dump pester test results
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host 'Total Tests Executed...:  ${{ steps.test_module.outputs.total_count }}'
           Write-Host 'Total Tests PASSED.....:  ${{ steps.test_module.outputs.passed_count }}'
